@@ -9,9 +9,11 @@ from models import Encoder, DecoderWithAttention
 from datasets import *
 from utils import *
 from nltk.translate.bleu_score import corpus_bleu
+from datetime import datetime
+import sys
 
 # Data parameters
-data_folder = '/media/ssd/caption data'  # folder with data files saved by create_input_files.py
+data_folder = 'dataset/output'  # folder with data files saved by create_input_files.py
 data_name = 'coco_5_cap_per_img_5_min_word_freq'  # base name shared by data files
 
 # Model parameters
@@ -24,7 +26,7 @@ cudnn.benchmark = True  # set to true only if inputs to model are fixed size; ot
 
 # Training parameters
 start_epoch = 0
-epochs = 120  # number of epochs to train for (if early stopping is not triggered)
+epochs = 5  # number of epochs to train for (if early stopping is not triggered)
 epochs_since_improvement = 0  # keeps track of number of epochs since there's been an improvement in validation BLEU
 batch_size = 32
 workers = 1  # for data-loading; right now, only 1 works with h5py
@@ -35,7 +37,11 @@ alpha_c = 1.  # regularization parameter for 'doubly stochastic attention', as i
 best_bleu4 = 0.  # BLEU-4 score right now
 print_freq = 100  # print training/validation stats every __ batches
 fine_tune_encoder = False  # fine-tune encoder?
-checkpoint = None  # path to checkpoint, None if none
+
+resume_from_checkpoint = True if '--resume' in sys.argv else False
+if resume_from_checkpoint is True:
+    print("Resuming from checkpoint")
+checkpoint = 'BEST_checkpoint_coco_5_cap_per_img_5_min_word_freq.pth.tar' if resume_from_checkpoint is True else None  # path to checkpoint, None if none
 
 
 def main():
@@ -133,6 +139,15 @@ def main():
         # Save checkpoint
         save_checkpoint(data_name, epoch, epochs_since_improvement, encoder, decoder, encoder_optimizer,
                         decoder_optimizer, recent_bleu4, is_best)
+
+        #Show timestamps of the end of each epoch
+        now = datetime.now()
+     
+        print("now =", now)
+
+        # dd/mm/YY H:M:S
+        dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
+        print("date and time = ", dt_string)
 
 
 def train(train_loader, encoder, decoder, criterion, encoder_optimizer, decoder_optimizer, epoch):

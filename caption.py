@@ -9,6 +9,7 @@ import skimage.transform
 import argparse
 from scipy.misc import imread, imresize
 from PIL import Image
+import os
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -182,7 +183,7 @@ def visualize_att(image_path, seq, alphas, rev_word_map, smooth=True):
             plt.imshow(alpha, alpha=0.8)
         plt.set_cmap(cm.Greys_r)
         plt.axis('off')
-    plt.show()
+    plt.savefig(os.path.join('captions/', os.path.basename(image_path)))
 
 
 if __name__ == '__main__':
@@ -196,8 +197,12 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    if torch.cuda.is_available():
+        map_location=lambda storage, loc: storage.cuda()
+    else:
+        map_location='cpu'
     # Load model
-    checkpoint = torch.load(args.model, map_location=str(device))
+    checkpoint = torch.load(args.model, map_location=map_location)
     decoder = checkpoint['decoder']
     decoder = decoder.to(device)
     decoder.eval()
