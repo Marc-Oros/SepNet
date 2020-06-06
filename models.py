@@ -23,19 +23,28 @@ class Encoder(nn.Module):
         # Resize image to fixed size to allow input images of variable size
         self.adaptive_pool = nn.AdaptiveAvgPool2d((encoded_image_size, encoded_image_size))
 
+        #Resize combined image encoding back to 2048
+        self.fc = nn.Linear(4096, 2048)
+
         self.fine_tune()
 
-    def forward(self, images):
+    def forward(self, images_fg, images_bg):
         """
         Forward propagation.
 
         :param images: images, a tensor of dimensions (batch_size, 3, image_size, image_size)
         :return: encoded images
         """
-        out = self.resnet(images)  # (batch_size, 2048, image_size/32, image_size/32)
-        out = self.adaptive_pool(out)  # (batch_size, 2048, encoded_image_size, encoded_image_size)
-        out = out.permute(0, 2, 3, 1)  # (batch_size, encoded_image_size, encoded_image_size, 2048)
-        return out
+        out_fg = self.resnet(images_fg)  # (batch_size, 2048, image_size/32, image_size/32)
+        out_fg = self.adaptive_pool(out_fg)  # (batch_size, 2048, encoded_image_size, encoded_image_size)
+        out_fg = out_fg.permute(0, 2, 3, 1)  # (batch_size, encoded_image_size, encoded_image_size, 2048)
+        
+        out_bg = self.resnet(images_bg)  # (batch_size, 2048, image_size/32, image_size/32)
+        out_bg = self.adaptive_pool(out_bg)  # (batch_size, 2048, encoded_image_size, encoded_image_size)
+        out_bg = out_bg.permute(0, 2, 3, 1)  # (batch_size, encoded_image_size, encoded_image_size, 2048)
+        output = torch.cat((out_fg, out_bg), 3)
+        output = self.fc(output)
+        return output
 
     def fine_tune(self, fine_tune=True):
         """

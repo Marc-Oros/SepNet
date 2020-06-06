@@ -1,3 +1,7 @@
-*.pth*
 dataset/
 captions/
+.vscode/
+*.pth*
+*.pyc
+*.log
+*.jpg

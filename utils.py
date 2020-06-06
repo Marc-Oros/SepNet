@@ -88,6 +88,13 @@ def create_input_files(dataset, karpathy_json_path, image_folder, captions_per_i
                                    (val_image_paths, val_image_captions, 'VAL'),
                                    (test_image_paths, test_image_captions, 'TEST')]:
 
+        with open(os.path.join(output_folder, split + '_ids' + '.txt'), 'a') as f:
+            for impath in impaths:
+                #Extraction of the image id from the file name
+                image_id = int(impath.split('/')[-1].split('_')[-1].split('.')[0])
+                datasetOriginalPartition = impath.split('/')[1][:-4]
+                f.write('{} {}\n'.format(image_id, datasetOriginalPartition))        
+
         with h5py.File(os.path.join(output_folder, split + '_IMAGES_' + base_filename + '.hdf5'), 'a') as h:
             # Make a note of the number of captions we are sampling per image
             h.attrs['captions_per_image'] = captions_per_image
@@ -284,3 +291,12 @@ def accuracy(scores, targets, k):
     correct = ind.eq(targets.view(-1, 1).expand_as(ind))
     correct_total = correct.view(-1).float().sum()  # 0D tensor
     return correct_total.item() * (100.0 / batch_size)
+
+def get_word_synonyms():
+    synonyms = []
+    with(open('synonyms.txt', 'r')) as f:
+        for line in f:
+            synonym_items = line.rstrip().split(', ')
+            synonyms.append(synonym_items)
+    return synonyms
+

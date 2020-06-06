@@ -58,16 +58,17 @@ def evaluate(beam_size):
     hypotheses = list()
 
     # For each image
-    for i, (image, caps, caplens, allcaps) in enumerate(
+    for i, (img_fg, img_bg, caps, caplens, allcaps) in enumerate(
             tqdm(loader, desc="EVALUATING AT BEAM SIZE " + str(beam_size))):
 
         k = beam_size
 
         # Move to GPU device, if available
-        image = image.to(device)  # (1, 3, 256, 256)
+        img_fg = img_fg.to(device)  # (1, 3, 256, 256)
+        img_bg = img_bg.to(device)  # (1, 3, 256, 256)
 
         # Encode
-        encoder_out = encoder(image)  # (1, enc_image_size, enc_image_size, encoder_dim)
+        encoder_out = encoder(img_fg, img_bg)  # (1, enc_image_size, enc_image_size, encoder_dim)
         enc_image_size = encoder_out.size(1)
         encoder_dim = encoder_out.size(3)
 
