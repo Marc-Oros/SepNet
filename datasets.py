@@ -53,9 +53,12 @@ class CaptionDataset(Dataset):
         self.train_annotations = COCO(os.path.join('dataset', 'annotations', 'instances_train2014.json'))
         self.val_annotations = COCO(os.path.join('dataset', 'annotations', 'instances_val2014.json'))
         self.idx2id = {}
+        self.idx2dataset = {}
         with(open(os.path.join(data_folder, self.split + '_ids.txt'), 'r')) as f:
             for i, line in enumerate(f):
-                self.idx2id[i] = int(line)
+                values = line.rstrip().split()
+                self.idx2id[i] = int(values[0])
+                self.idx2dataset[i] = values[1]
 
     def __getitem__(self, i):
         # Remember, the Nth caption corresponds to the (N // captions_per_image)th image
@@ -66,8 +69,16 @@ class CaptionDataset(Dataset):
         caplen = torch.LongTensor([self.caplens[i]])
 
         caption_words = [self.word_map[caption[idx].item()] for idx in range(caplen)]
+
+        if self.idx2dataset[i // self.cpi] not in ['train', 'val']:
+            raise Exception('Invalid value when reading dataset partition')
+
+        annotations = self.train_annotations if self.idx2dataset[i // self.cpi] == 'train' else self.val_annotations
         
-        img_fg, img_bg = separate_objects(img, caption_words, self.synonyms, self.train_annotations, self.val_annotations, self.idx2id[i // self.cpi])
+        img_fg, img_bg = separate_objects(img, caption_words, self.synonyms, annotations, self.idx2id[i // self.cpi], self.split == 'TEST')
+
+        if img_bg is None or img_fg is None:
+            return None
 
         if self.transform is not None:
             img_bg = self.transform(img_bg)

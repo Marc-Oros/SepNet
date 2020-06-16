@@ -7,6 +7,8 @@ from utils import *
 from nltk.translate.bleu_score import corpus_bleu
 import torch.nn.functional as F
 from tqdm import tqdm
+import sys
+import pickle
 
 # Parameters
 data_folder = 'dataset/output/'  # folder with data files saved by create_input_files.py
@@ -15,6 +17,8 @@ checkpoint = 'BEST_checkpoint_coco_5_cap_per_img_5_min_word_freq.pth.tar'  # mod
 word_map_file = 'dataset/output/WORDMAP_coco_5_cap_per_img_5_min_word_freq.json'  # word map, ensure it's the same the data was encoded with and the model was trained with
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # sets device for model and PyTorch tensors
 cudnn.benchmark = True  # set to true only if inputs to model are fixed size; otherwise lot of computational overhead
+
+captionsOriginal = pickle.load(open('captionsOriginal.pkl', 'rb'))
 
 # Load model
 checkpoint = torch.load(checkpoint)
@@ -45,8 +49,8 @@ def evaluate(beam_size):
     """
     # DataLoader
     loader = torch.utils.data.DataLoader(
-        CaptionDataset(data_folder, data_name, 'TEST', transform=transforms.Compose([normalize])),
-        batch_size=1, shuffle=True, num_workers=1, pin_memory=True, collate_fn=my_collate)
+        CaptionDataset(data_folder, data_name, 'TEST', transform=transforms.Compose([normalize]),),
+        batch_size=1, shuffle=False, num_workers=1, pin_memory=True, collate_fn=my_collate)
 
     # TODO: Batched Beam Search
     # Therefore, do not use a batch_size greater than 1 - IMPORTANT!
@@ -57,9 +61,14 @@ def evaluate(beam_size):
     references = list()
     hypotheses = list()
 
+    first_caption_idx = 0
+
     # For each image
     for i, (img_fg, img_bg, caps, caplens, allcaps) in enumerate(
             tqdm(loader, desc="EVALUATING AT BEAM SIZE " + str(beam_size))):
+
+        if i != 0 and i % 5 == 0:
+            first_caption_idx += 5
 
         if img_fg is None:
             continue
@@ -165,7 +174,7 @@ def evaluate(beam_size):
         seq = complete_seqs[i]
 
         # References
-        img_caps = allcaps[0].tolist()
+        img_caps = captionsOriginal[first_caption_idx: first_caption_idx+5].tolist()
         img_captions = list(
             map(lambda c: [w for w in c if w not in {word_map['<start>'], word_map['<end>'], word_map['<pad>']}],
                 img_caps))  # remove <start> and pads

@@ -7,6 +7,7 @@ from scipy.misc import imread, imresize
 from tqdm import tqdm
 from collections import Counter
 from random import seed, choice, sample
+from torch.utils.data.dataloader import default_collate
 
 
 def create_input_files(dataset, karpathy_json_path, image_folder, captions_per_image, min_word_freq, output_folder,
@@ -300,3 +301,9 @@ def get_word_synonyms():
             synonyms.append(synonym_items)
     return synonyms
 
+
+def my_collate(batch):
+    batch = list(filter(lambda x : x is not None, batch))
+    if len(batch) < 1:
+        return None, None, None, None, None
+    return default_collate(batch)

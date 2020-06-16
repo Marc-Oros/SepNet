@@ -5,3 +5,4 @@ captions/
 *.pyc
 *.log
 *.jpg
+*.pkl
