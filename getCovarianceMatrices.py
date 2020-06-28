@@ -104,7 +104,7 @@ pickle.dump(covMatrixCaps, open("covMatrixCaps.pkl", "wb"))
 pickle.dump(covMatrixAnns, open("covMatrixAnns.pkl", "wb"))
 pickle.dump(id2class, open("idxToClass.pkl", "wb"))
 
-np.savetxt("covMatrixCaps.csv", covMatrixCaps, delimiter=",")
-np.savetxt("covMatrixAnns.csv", covMatrixAnns, delimiter=",")
+np.savetxt("covMatrixCaps.csv", covMatrixCaps, fmt='%i', delimiter=",")
+np.savetxt("covMatrixAnns.csv", covMatrixAnns, fmt='%i', delimiter=",")
 
 exit()
