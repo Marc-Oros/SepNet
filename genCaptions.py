@@ -132,7 +132,6 @@ def generate():
             step += 1
         capLengths[i] = step
 
-    #pickle.dump(capLengths, open("caplensSplit.pkl", "wb"))
     pickle.dump(captions, open("captionsSplitFromAnns.pkl", "wb"))
     return
 

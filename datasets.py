@@ -13,7 +13,7 @@ class CaptionDataset(Dataset):
     A PyTorch Dataset class to be used in a PyTorch DataLoader to create batches.
     """
 
-    def __init__(self, data_folder, data_name, split, transform=None):
+    def __init__(self, data_folder, data_name, split, transform=None, minimal=False):
         """
         :param data_folder: folder where data files are stored
         :param data_name: base name of processed datasets
@@ -41,6 +41,8 @@ class CaptionDataset(Dataset):
         # PyTorch transformation pipeline for the image (normalizing, etc.)
         self.transform = transform
 
+        self.minimal = minimal
+
         # Total number of datapoints
         self.dataset_size = len(self.captions)
 
@@ -61,14 +63,17 @@ class CaptionDataset(Dataset):
                 self.idx2dataset[i] = values[1]
 
     def __getitem__(self, i):
-        # Remember, the Nth caption corresponds to the (N // captions_per_image)th image
-        img = torch.FloatTensor(self.imgs[i // self.cpi] / 255.)
-
         caption = torch.LongTensor(self.captions[i])
 
         caplen = torch.LongTensor([self.caplens[i]])
 
         caption_words = [self.word_map[caption[idx].item()] for idx in range(caplen)]
+
+        if self.minimal is True:
+            return self.idx2id[i // self.cpi], caption_words
+
+        # Remember, the Nth caption corresponds to the (N // captions_per_image)th image
+        img = torch.FloatTensor(self.imgs[i // self.cpi] / 255.)
 
         if self.idx2dataset[i // self.cpi] not in ['train', 'val']:
             raise Exception('Invalid value when reading dataset partition')
