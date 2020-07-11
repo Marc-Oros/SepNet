@@ -8,6 +8,7 @@ from nltk import stem
 from pycocotools.coco import COCO
 import numpy as np
 import matplotlib.pyplot as plt
+import re
 
 train = CaptionDataset('dataset/output',
                          'coco_5_cap_per_img_5_min_word_freq',
@@ -50,7 +51,8 @@ for img_id, caption in tqdm(train):
     #Logic to match synonyms with more than one word in them
     for id, word_synonyms_group in enumerate(synonyms):
         for possible_synonym in word_synonyms_group:
-            if possible_synonym in stemmedCaption:
+            pattern = r"\b{}\b".format(possible_synonym)
+            if re.search(pattern, stemmedCaption) is not None:
                 classes_in_caption.append(id)
                 
     classes_in_caption = set(classes_in_caption)

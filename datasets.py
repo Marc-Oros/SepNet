@@ -99,3 +99,6 @@ class CaptionDataset(Dataset):
 
     def __len__(self):
         return self.dataset_size
+
+    def getImgId(self, i):
+        return self.idx2id[i // self.cpi]

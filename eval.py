@@ -7,6 +7,8 @@ from utils import *
 from nltk.translate.bleu_score import corpus_bleu
 import torch.nn.functional as F
 from tqdm import tqdm
+import json
+from pycocoevalcap.eval import COCOEvalCap
 
 # Parameters
 data_folder = 'dataset/output/'  # folder with data files saved by create_input_files.py
@@ -43,10 +45,12 @@ def evaluate(beam_size):
     :param beam_size: beam size at which to generate captions for evaluation
     :return: BLEU-4 score
     """
+    # Test Dataset
+    testDataset = CaptionDataset(data_folder, data_name, 'TEST', transform=transforms.Compose([normalize]))
     # DataLoader
     loader = torch.utils.data.DataLoader(
-        CaptionDataset(data_folder, data_name, 'TEST', transform=transforms.Compose([normalize])),
-        batch_size=1, shuffle=True, num_workers=1, pin_memory=True, collate_fn=my_collate)
+        testDataset,
+        batch_size=1, shuffle=False, num_workers=1, pin_memory=True, collate_fn=my_collate)
 
     # TODO: Batched Beam Search
     # Therefore, do not use a batch_size greater than 1 - IMPORTANT!
@@ -56,11 +60,33 @@ def evaluate(beam_size):
     # references = [[ref1a, ref1b, ref1c], [ref2a, ref2b], ...], hypotheses = [hyp1, hyp2, ...]
     references = list()
     hypotheses = list()
+    #Fields necessary for json used to compute the chair metric
+    resultJson = {}
+    resultJson['overall'] = {
+        'Bleu_1': 0,
+        'Bleu_2': 0,
+        'Bleu_3': 0,
+        'Bleu_4': 0,
+        'METEOR': 0,
+        'CIDEr': 0,
+        'SPICE': 0,
+        'ROUGE_L': 0,
+    }
+    captionsJson = []
+
+    #Text file with captions
+    captionOutFile = open('evalCaptions.txt', 'w')
 
     # For each image
     for i, (img_fg, img_bg, caps, caplens, allcaps) in enumerate(
             tqdm(loader, desc="EVALUATING AT BEAM SIZE " + str(beam_size))):
 
+        #Only generate one caption per image, a limitation of the coco evaluation code (only one result per id)
+        if i % 5 != 0:
+            continue
+        
+        imgId = testDataset.getImgId(i)
+        
         if img_fg is None:
             continue
 
@@ -161,8 +187,8 @@ def evaluate(beam_size):
             print("Skipping item with no scores")
             continue
 
-        i = complete_seqs_scores.index(max(complete_seqs_scores))
-        seq = complete_seqs[i]
+        seqIdx = complete_seqs_scores.index(max(complete_seqs_scores))
+        seq = complete_seqs[seqIdx]
 
         # References
         img_caps = allcaps[0].tolist()
@@ -172,10 +198,42 @@ def evaluate(beam_size):
         references.append(img_captions)
 
         # Hypotheses
-        hypotheses.append([w for w in seq if w not in {word_map['<start>'], word_map['<end>'], word_map['<pad>']}])
+        hypo = [w for w in seq if w not in {word_map['<start>'], word_map['<end>'], word_map['<pad>']}]
+        hypotheses.append(hypo)
+        captionWords = [rev_word_map[item] for item in hypo]
+        captionString = ' '.join(captionWords)
+        resultDict = {
+            'image_id': imgId,
+            'caption': captionString,
+            'Bleu_1': 0,
+            'Bleu_2': 0,
+            'Bleu_3': 0,
+            'Bleu_4': 0,
+            'METEOR': 0,
+            'CIDEr': 0,
+            'SPICE': 0,
+            'ROUGE_L': 0,
+        }        
+
+        captionsJson.append(resultDict)
 
         assert len(references) == len(hypotheses)
 
+        #Print some captions and their image ids
+        if i % 1000 == 0:
+            captionOutFile.write('Image ID: {}\n'.format(imgId))
+            captionOutFile.write('Caption: {}\n'.format(captionString))
+
+    coco = COCO('testGTCaptions.json')
+    cocoRes = coco.loadRes(captionsJson)
+    cocoEval = COCOEvalCap(coco, cocoRes)
+    cocoEval.params['image_id'] = cocoRes.getImgIds()
+    cocoEval.evaluate()
+
+    # Save results to json file for chair metric
+    resultJson['imgToEval'] = captionsJson
+    with open('evalCaptions.json', 'w') as fp:
+        json.dump(resultJson, fp)
     # Calculate BLEU-4 scores
     bleu4 = corpus_bleu(references, hypotheses)
 

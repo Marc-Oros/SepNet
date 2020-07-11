@@ -8,3 +8,4 @@ captions/
 *.pkl
 *.png
 *.csv
+*.json
