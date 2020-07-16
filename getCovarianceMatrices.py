@@ -43,15 +43,13 @@ for img_id, caption in tqdm(train):
     captionWords = caption[1:-1]
     
     #Covariance matrix from captions
-
-    stemmed_words = [stemmer.stem(word) for word in captionWords]
-    stemmedCaption = ' '.join(stemmed_words)
+    stemmedCaption = ' '.join(captionWords)
     classes_in_caption = []
 
     #Logic to match synonyms with more than one word in them
     for id, word_synonyms_group in enumerate(synonyms):
         for possible_synonym in word_synonyms_group:
-            pattern = r"\b{}\b".format(possible_synonym)
+            pattern = r"\b{}s?\b".format(possible_synonym)
             if re.search(pattern, stemmedCaption) is not None:
                 classes_in_caption.append(id)
                 
