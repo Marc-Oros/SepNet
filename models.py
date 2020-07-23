@@ -5,13 +5,13 @@ import torchvision
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-class Encoder(nn.Module):
+class SplitImageEncoder(nn.Module):
     """
     Encoder.
     """
 
     def __init__(self, encoded_image_size=14):
-        super(Encoder, self).__init__()
+        super(SplitImageEncoder, self).__init__()
         self.enc_image_size = encoded_image_size
 
         resnet = torchvision.models.resnet101(pretrained=True)  # pretrained ImageNet ResNet-101
@@ -44,6 +44,62 @@ class Encoder(nn.Module):
         out_bg = out_bg.permute(0, 2, 3, 1)  # (batch_size, encoded_image_size, encoded_image_size, 2048)
         output = torch.cat((out_fg, out_bg), 3)
         output = self.fc(output)
+        return output
+
+    def fine_tune(self, fine_tune=True):
+        """
+        Allow or prevent the computation of gradients for convolutional blocks 2 through 4 of the encoder.
+
+        :param fine_tune: Allow?
+        """
+        for p in self.resnet.parameters():
+            p.requires_grad = False
+        # If fine-tuning, only fine-tune convolutional blocks 2 through 4
+        for c in list(self.resnet.children())[5:]:
+            for p in c.parameters():
+                p.requires_grad = fine_tune
+
+
+class FastTextEncoder(nn.Module):
+    """
+    Encoder.
+    """
+
+    def __init__(self, encoded_image_size=14):
+        super(FastTextEncoder, self).__init__()
+        self.enc_image_size = encoded_image_size
+
+        resnet = torchvision.models.resnet101(pretrained=True)  # pretrained ImageNet ResNet-101
+
+        # Remove linear and pool layers (since we're not doing classification)
+        modules = list(resnet.children())[:-2]
+        self.resnet = nn.Sequential(*modules)
+
+        # Resize image to fixed size to allow input images of variable size
+        self.adaptive_pool = nn.AdaptiveAvgPool2d((encoded_image_size, encoded_image_size))
+
+        #Downsize bg channel to concat to original 2048 dimension
+        self.fc1 = nn.Linear(2048, 1024)
+
+        #Upsize fg channel (fastText) to concat to original 2048 dimension
+        self.fc2 = nn.Linear(300, 1024)
+
+        self.fine_tune()
+
+    def forward(self, tensor_fg, images_bg):
+        """
+        Forward propagation.
+
+        :param images: images, a tensor of dimensions (batch_size, 3, image_size, image_size)
+        :return: encoded images
+        """
+        out_fg = self.fc2(tensor_fg)  # (batch_size, 14, 14, 1024)
+        
+        out_bg = self.resnet(images_bg)  # (batch_size, 2048, image_size/32, image_size/32)
+        out_bg = self.adaptive_pool(out_bg)  # (batch_size, 2048, encoded_image_size, encoded_image_size)
+        out_bg = out_bg.permute(0, 2, 3, 1)  # (batch_size, encoded_image_size, encoded_image_size, 2048)
+        out_bg = self.fc1(out_bg)
+        output = torch.cat((out_fg, out_bg), 3)
         return output
 
     def fine_tune(self, fine_tune=True):

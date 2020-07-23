@@ -77,6 +77,8 @@ def evaluate(beam_size):
     #Text file with captions
     captionOutFile = open('evalCaptions.txt', 'w')
 
+    synonyms = get_word_synonyms()
+
     # For each image
     for i, (tensor_fg, img_bg, caps, caplens, allcaps) in enumerate(
             tqdm(loader, desc="EVALUATING AT BEAM SIZE " + str(beam_size))):
@@ -84,10 +86,22 @@ def evaluate(beam_size):
         #Only generate one caption per image, a limitation of the coco evaluation code (only one result per id)
         if i % 5 != 0:
             continue
-        
+
         imgId = testDataset.getImgId(i)
         
         if tensor_fg is None:
+            continue
+
+        captionString = ' '.join([rev_word_map[caps[0][idx].item()] for idx in range(caplens[0]) if rev_word_map[caps[0][idx].item()] != '<unk>'][1:-1])
+        
+        hasPerson = False
+
+        for synonym in synonyms[0]:
+            pattern = r"\b{}s?\b".format(synonym)
+            if re.search(pattern, captionString) is not None:
+                hasPerson = True
+
+        if hasPerson is False:
             continue
 
         k = beam_size

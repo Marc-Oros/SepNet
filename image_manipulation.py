@@ -19,9 +19,12 @@ def separate_objects(img, caption_words, synonyms, annotations, img_id, isTest=F
     if img_bg is None or img_fg is None:
         return None, None
 
-    #Also check how to do this only in training
-    if '--bg' not in sys.argv:
-        img_fg = replaceObjects(img_id, annotations, img_fg)
+    #Uncomment to test scores with different amounts of fg information
+    """ratio = np.count_nonzero(img_fg) / float(256*256)    
+    lower_thr = 0
+    upper_thr = 1
+    if ratio < lower_thr or ratio > upper_thr:
+        return None, None"""
 
     if view_results is True:
         img_arr = img.permute(1, 2, 0).numpy()
@@ -237,10 +240,6 @@ def replaceObjects(img_id, annotations, img_fg):
         img_fg[:, ymin:ymax, xmin:xmax] = newObject[:, :, :]
 
     return img_fg
-
-def getNewItem(categ, bbox_w, bbox_h):
-    dataset = CaptionDatasetSingleton()
-    print(dataset)
 
 def debug(text):
     if '--debug' in sys.argv:

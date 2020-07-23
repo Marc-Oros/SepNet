@@ -301,9 +301,197 @@ def get_word_synonyms():
             synonyms.append(synonym_items)
     return synonyms
 
+def getClsList():
+    clsList = [
+        'person',
+        'bicycle',
+        'car',
+        'motorcycle',
+        'airplane',
+        'bus',
+        'train',
+        'truck',
+        'boat',
+        'traffic light',
+        'fire hydrant',
+        'stop sign',
+        'parking meter',
+        'bench',
+        'bird',
+        'cat',
+        'dog',
+        'horse',
+        'sheep',
+        'cow',
+        'elephant',
+        'bear',
+        'zebra',
+        'giraffe',
+        'backpack',
+        'umbrella',
+        'handbag',
+        'tie',
+        'suitcase',
+        'frisbee',
+        'skis',
+        'snowboard',
+        'sports ball',
+        'kite',
+        'baseball bat',
+        'baseball glove',
+        'skateboard',
+        'surfboard',
+        'tennis racket',
+        'bottle',
+        'wine glass',
+        'cup',
+        'fork',
+        'knife',
+        'spoon',
+        'bowl',
+        'banana',
+        'apple',
+        'sandwich',
+        'orange',
+        'broccoli',
+        'carrot',
+        'hot dog',
+        'pizza',
+        'donut',
+        'cake',
+        'chair',
+        'couch',
+        'potted plant',
+        'bed',
+        'dining table',
+        'toilet',
+        'tv',
+        'laptop',
+        'mouse',
+        'remote',
+        'keyboard',
+        'cell phone',
+        'microwave',
+        'oven',
+        'toaster',
+        'sink',
+        'refrigerator',
+        'book',
+        'clock',
+        'vase',
+        'scissors',
+        'teddy bear',
+        'hair drier',
+        'toothbrush'
+        ]
+    return clsList
+
+def getId2ClassMap():
+    clsList = getClsList()
+    clsMap = {i: clsName for i, clsName in enumerate(clsList)}
+    clsMap[-1] = None
+    return clsMap
+
+def getClass2IdMap():
+    clsList = getClsList()
+    clsMap = {clsName: i for i, clsName in enumerate(clsList)}
+    return clsMap
+
 
 def my_collate(batch):
     batch = list(filter(lambda x : x is not None, batch))
     if len(batch) < 1:
-        return None, None, None, None, None
+        return None, None, None, None
+
     return default_collate(batch)
+
+def my_collate_test(batch):
+    batch = list(filter(lambda x : x is not None, batch))
+    if len(batch) < 1:
+        return None, None, None, None, None
+
+    return default_collate(batch)
+
+def getProbabilityValues():
+    #Probabilities of classes for person
+    return np.array(
+        [0,
+        0.002489667842,
+        0.00077443315,
+        0.002257435451,
+        0.007726152318,
+        0.002185485317,
+        0.003698135829,
+        0.001652279562,
+        0.003164750853,
+        0.002641525592,
+        0.009567851417,
+        0.01022155555,
+        0.02350957777,
+        0.001562839928,
+        0.00875356619,
+        0.01048197735,
+        0.003245898311,
+        0.003265219134,
+        0.01662293378,
+        0.01119503703,
+        0.008396277774,
+        0.08661423388,
+        0.06856960182,
+        0.01394635969,
+        0.001296824621,
+        0.001898120466,
+        0.001064469886,
+        0.001721412598,
+        0.003809422324,
+        0.003457290848,
+        0.002197156801,
+        0.004166254288,
+        0.001540889929,
+        0.003116800083,
+        0.002689003993,
+        0.002543540099,
+        0.002067425181,
+        0.001734110057,
+        0.001802486795,
+        0.001394635969,
+        0.004063383812,
+        0.001391099276,
+        0.004013830351,
+        0.002847180699,
+        0.004063383812,
+        0.002276169355,
+        0.007062963278,
+        0.01456345525,
+        0.006609118248,
+        0.013489102,
+        0.02789271939,
+        0.01732284678,
+        0.008269700722,
+        0.003748679826,
+        0.007654281134,
+        0.004252378408,
+        0.0008126767624,
+        0.003170848639,
+        0.003400145545,
+        0.004927157017,
+        0.001139660972,
+        0.01431017777,
+        0.003317883959,
+        0.003508892204,
+        0.0125623698,
+        0.003304559124,
+        0.01111939489,
+        0.001650622311,
+        0.01456345525,
+        0.006428400171,
+        0.3291340888,
+        0.006885650392,
+        0.007950098762,
+        0.00298669772,
+        0.003164750853,
+        0.007583734764,
+        0.01732284678,
+        0.008106750955,
+        0.05142720137,
+        0.01265900341], dtype=np.float)

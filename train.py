@@ -5,7 +5,7 @@ import torch.utils.data
 import torchvision.transforms as transforms
 from torch import nn
 from torch.nn.utils.rnn import pack_padded_sequence
-from models import Encoder, DecoderWithAttention
+from models import FastTextEncoder as Encoder, DecoderWithAttention
 from datasets import *
 from utils import *
 from nltk.translate.bleu_score import corpus_bleu
@@ -26,7 +26,7 @@ cudnn.benchmark = True  # set to true only if inputs to model are fixed size; ot
 
 # Training parameters
 start_epoch = 0
-epochs = 50  # number of epochs to train for (if early stopping is not triggered)
+epochs = 20  # number of epochs to train for (if early stopping is not triggered)
 epochs_since_improvement = 0  # keeps track of number of epochs since there's been an improvement in validation BLEU
 batch_size = 128
 workers = 1  # for data-loading; right now, only 1 works with h5py
@@ -91,14 +91,20 @@ def main():
     # Loss function
     criterion = nn.CrossEntropyLoss().to(device)
 
+
+    train_annotations=COCO(os.path.join('dataset', 'annotations', 'instances_train2014.json'))
+    val_annotations=COCO(os.path.join('dataset', 'annotations', 'instances_val2014.json'))
+
     # Custom dataloaders
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
     train_loader = torch.utils.data.DataLoader(
-        CaptionDataset(data_folder, data_name, 'TRAIN', transform=transforms.Compose([normalize])),
+        CaptionDatasetFastTextWithReplacement(data_folder, data_name, 'TRAIN', transform=transforms.Compose([normalize]),
+        train_annotations=train_annotations,val_annotations=val_annotations),
         batch_size=batch_size, shuffle=True, num_workers=workers, pin_memory=True, collate_fn=my_collate)
     val_loader = torch.utils.data.DataLoader(
-        CaptionDataset(data_folder, data_name, 'VAL', transform=transforms.Compose([normalize])),
+        CaptionDatasetFastTextWithReplacement(data_folder, data_name, 'VAL', transform=transforms.Compose([normalize]),
+                train_annotations=train_annotations,val_annotations=val_annotations),
         batch_size=batch_size, shuffle=True, num_workers=workers, pin_memory=True, collate_fn=my_collate)
 
     # Epochs
@@ -174,17 +180,18 @@ def train(train_loader, encoder, decoder, criterion, encoder_optimizer, decoder_
     start = time.time()
 
     # Batches
-    for i, (imgs_fg, imgs_bg, caps, caplens) in enumerate(train_loader):
+    for i, (tensor_fg, imgs_bg, caps, caplens) in enumerate(train_loader):
+
         data_time.update(time.time() - start)
 
         # Move to GPU, if available
-        imgs_fg = imgs_fg.to(device)
+        tensor_fg = tensor_fg.to(device)
         imgs_bg = imgs_bg.to(device)
         caps = caps.to(device)
         caplens = caplens.to(device)
 
         # Forward prop.
-        imgs = encoder(imgs_fg, imgs_bg)
+        imgs = encoder(tensor_fg, imgs_bg)
         scores, caps_sorted, decode_lengths, alphas, sort_ind = decoder(imgs, caps, caplens)
 
         # Since we decoded starting with <start>, the targets are all words after <start>, up to <end>
@@ -265,17 +272,17 @@ def validate(val_loader, encoder, decoder, criterion):
     # solves the issue #57
     with torch.no_grad():
         # Batches
-        for i, (img_fg, img_bg, caps, caplens, allcaps) in enumerate(val_loader):
-
+        for i, (tensor_fg, img_bg, caps, caplens, allcaps) in enumerate(val_loader):
+            
             # Move to device, if available
-            img_fg = img_fg.to(device)
+            tensor_fg = tensor_fg.to(device)
             img_bg = img_bg.to(device)
             caps = caps.to(device)
             caplens = caplens.to(device)
 
             # Forward prop.
             if encoder is not None:
-                imgs = encoder(img_fg, img_bg)
+                imgs = encoder(tensor_fg, img_bg)
             scores, caps_sorted, decode_lengths, alphas, sort_ind = decoder(imgs, caps, caplens)
 
             # Since we decoded starting with <start>, the targets are all words after <start>, up to <end>

@@ -1,9 +1,6 @@
 from datasets import CaptionDataset
 from tqdm import tqdm
 import os
-import pickle
-import json
-import numpy as np
 import spacy
 from utils import get_word_synonyms
 import re
@@ -14,8 +11,6 @@ dataset = CaptionDataset('dataset/output',
                          None,
                          minimal=True)
 
-gtJson = []
-imgJson = []
 nlp = spacy.load("en_core_web_sm")
 
 synonyms = get_word_synonyms()
@@ -64,6 +59,7 @@ for data in tqdm(dataset):
     doc = nlp(captionString)
     wordMask = [1 for i in range(len(doc))]
     for chk in doc.noun_chunks:
+        print('Test - {}'.format(chk.root.text))
         if chk.root.text == nouns[0] or chk.root.text == nouns[1]:
             for word in chk:
                 if word.head.text in nouns and word.pos_ not in ['DET', 'PROPN'] and word.text != chk.root.text:
