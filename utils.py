@@ -495,3 +495,43 @@ def getProbabilityValues():
         0.008106750955,
         0.05142720137,
         0.01265900341], dtype=np.float)
+
+def updateCovMatrix(covMatrix, annotations, img_id, pair):
+    classesInImage = []
+    annIds = annotations.getAnnIds(img_id)
+    if len(annIds) == 0:
+        raise Exception('Image ID {} without annotations'.format(img_id))
+    anns = annotations.loadAnns(annIds)
+
+    for annotation in anns:
+        catinfo = annotations.loadCats(annotation['category_id'])[0]
+        classesInImage.append(catinfo['name'])
+    
+    classesInImage = set(classesInImage)
+
+    clsMap = getClass2IdMap()
+    
+    for cls_name in classesInImage:
+        clsId = clsMap[cls_name]
+        if clsId not in pair:
+            covMatrix[clsId, pair[0]] = max(covMatrix[clsId, pair[0]] - 1, 1)
+            covMatrix[pair[0], clsId] = max(covMatrix[pair[0], clsId] - 1, 1)
+            covMatrix[clsId, pair[1]] = max(covMatrix[clsId, pair[1]] + 1, 1)
+            covMatrix[pair[1], clsId] = max(covMatrix[pair[1], clsId] + 1, 1)
+    return covMatrix
+
+def getClassTotalsFromCV(covMatrix):
+    nClasses = covMatrix.shape[0]
+    result = np.zeros(nClasses)
+    for i in range(nClasses):
+        result[i] = np.sum(covMatrix[i,:])
+    return result
+
+def getClassProbabilites(covMatrix, classTotals):
+    probs = np.zeros((covMatrix.shape[0], covMatrix.shape[1]))
+    for i in range(covMatrix.shape[0]):
+        if np.sum(covMatrix[i]) != classTotals[i]:
+            raise Exception("Class totals don't match the covariance matrix")
+        probs[i, :] = 1 / (covMatrix[i, :] / classTotals[i])
+        probs[i, :] = probs[i, :] / np.sum(probs[i, :])
+    return probs

@@ -36,10 +36,10 @@ for i, item in enumerate(id2class):
     class2Id[item] = i
 
 
-covMatrixCaps = np.zeros((80, 80), dtype=np.int)
-covMatrixAnns = np.zeros((80, 80), dtype=np.int)
+covMatrixCaps = np.ones((80, 80), dtype=np.int)
+covMatrixAnns = np.ones((80, 80), dtype=np.int)
 
-for img_id, caption in tqdm(train):
+for img_id, caption, _ in tqdm(train):
     captionWords = caption[1:-1]
     
     #Covariance matrix from captions
@@ -89,7 +89,7 @@ ax.set_title('Covariance matrix from captions', pad=50)
 ax.set(xticks=np.arange(len(id2class)), xticklabels=id2class,
        yticks=np.arange(len(id2class)), yticklabels=id2class)
 plt.xticks(rotation=90)
-plt.savefig('covMatrixCaps.png')
+#plt.savefig('covMatrixCaps.png')
 
 #Plot covariance matrix from annotations
 ax.matshow(covMatrixAnns, cmap='hot')
@@ -97,14 +97,14 @@ ax.set_title('Covariance matrix from annotations', pad=50)
 ax.set(xticks=np.arange(len(id2class)), xticklabels=id2class,
        yticks=np.arange(len(id2class)), yticklabels=id2class)
 plt.xticks(rotation=90)
-plt.savefig('covMatrixAnns.png')
+#plt.savefig('covMatrixAnns.png')
 
 #Dump results to files
 pickle.dump(covMatrixCaps, open("covMatrixCaps.pkl", "wb"))
 pickle.dump(covMatrixAnns, open("covMatrixAnns.pkl", "wb"))
-pickle.dump(id2class, open("idxToClass.pkl", "wb"))
+#pickle.dump(id2class, open("idxToClass.pkl", "wb"))
 
-np.savetxt("covMatrixCaps.csv", covMatrixCaps, fmt='%i', delimiter=",")
-np.savetxt("covMatrixAnns.csv", covMatrixAnns, fmt='%i', delimiter=",")
+#np.savetxt("covMatrixCaps.csv", covMatrixCaps, fmt='%i', delimiter=",")
+#np.savetxt("covMatrixAnns.csv", covMatrixAnns, fmt='%i', delimiter=",")
 
 exit()

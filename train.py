@@ -99,11 +99,11 @@ def main():
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
     train_loader = torch.utils.data.DataLoader(
-        CaptionDatasetFastTextWithReplacement(data_folder, data_name, 'TRAIN', transform=transforms.Compose([normalize]),
+        CaptionDatasetFastTextWithReplacementCV(data_folder, data_name, 'TRAIN', transform=transforms.Compose([normalize]),
         train_annotations=train_annotations,val_annotations=val_annotations),
         batch_size=batch_size, shuffle=True, num_workers=workers, pin_memory=True, collate_fn=my_collate)
     val_loader = torch.utils.data.DataLoader(
-        CaptionDatasetFastTextWithReplacement(data_folder, data_name, 'VAL', transform=transforms.Compose([normalize]),
+        CaptionDatasetFastText(data_folder, data_name, 'VAL', transform=transforms.Compose([normalize]),
                 train_annotations=train_annotations,val_annotations=val_annotations),
         batch_size=batch_size, shuffle=True, num_workers=workers, pin_memory=True, collate_fn=my_collate)
 

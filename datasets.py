@@ -4,7 +4,7 @@ import h5py
 import json
 import os
 from image_manipulation import separate_objects
-from utils import get_word_synonyms, getClsList, getProbabilityValues, getId2ClassMap, getClass2IdMap
+from utils import get_word_synonyms, getClsList, getProbabilityValues, getId2ClassMap, getClass2IdMap, updateCovMatrix
 from pycocotools.coco import COCO
 import spacy
 import re
@@ -12,6 +12,8 @@ from sentenceSimplifier import SentenceSimplifier
 import random
 from fastTextReplacer import FastTextReplacer
 import numpy as np
+import pickle
+import itertools
 
 
 class CaptionDataset(Dataset):
@@ -70,11 +72,11 @@ class CaptionDataset(Dataset):
 
         caption_words = [self.word_map[caption[idx].item()] for idx in range(caplen)]
 
-        if self.minimal is True:
-            return self.idx2id[i // self.cpi], caption_words
-
         # Remember, the Nth caption corresponds to the (N // captions_per_image)th image
         img = torch.FloatTensor(self.imgs[i // self.cpi] / 255.)
+
+        if self.minimal is True:
+            return self.idx2id[i // self.cpi], caption_words, img
 
         if self.transform is not None:
             img = self.transform(img)
@@ -108,6 +110,9 @@ class CaptionDatasetSplit(CaptionDataset):
             self.val_annotations = COCO(os.path.join('dataset', 'annotations', 'instances_val2014.json'))
         else:
             self.val_annotations = val_annotations
+        if self.split == 'TEST' and '-frcnn' in sys.argv:
+            print('Using Faster R-CNN annotations')
+            self.test_annotations = COCO('coco_FRCNN.json')
         self.idx2dataset = {}
         
         with(open(os.path.join(data_folder, self.split + '_ids.txt'), 'r')) as f:
@@ -131,7 +136,10 @@ class CaptionDatasetSplit(CaptionDataset):
         if self.idx2dataset[i // self.cpi] not in ['train', 'val']:
             raise Exception('Invalid value when reading dataset partition')
 
-        annotations = self.train_annotations if self.idx2dataset[i // self.cpi] == 'train' else self.val_annotations
+        if self.split == 'TEST' and '-frcnn' in sys.argv:
+            annotations = self.test_annotations
+        else:
+            annotations = self.train_annotations if self.idx2dataset[i // self.cpi] == 'train' else self.val_annotations
         
         img_fg, img_bg = separate_objects(img, caption_words, self.synonyms, annotations, self.idx2id[i // self.cpi], self.split == 'TEST')
 
@@ -151,7 +159,7 @@ class CaptionDatasetSplit(CaptionDataset):
 class CaptionDatasetFastText(CaptionDatasetSplit):
     def __init__(self, data_folder, data_name, split, transform=None, train_annotations=None, val_annotations=None):
         super().__init__(data_folder, data_name, split, transform, train_annotations, val_annotations)
-        self.FTReplacer = FastTextReplacer(self.train_annotations, self.val_annotations)
+        self.FTReplacer = FastTextReplacer(self.train_annotations, self.val_annotations, useFRCNN=self.split is 'TEST' and '-frcnn' in sys.argv)
 
     def __getitem__(self, i):
         data = super().__getitem__(i)
@@ -233,7 +241,7 @@ class CaptionDatasetFastTextWithReplacement(CaptionDatasetFastText):
                     print('ERROR - word "{}" not found in word map'.format(word))
                     print('ERROR - Sentence with error is {}'.format(simplifiedString))
             caption[i] = self.rev_word_map['<end>']
-            caplen[0] = len(caption)
+            caplen[0] = i+1
             caption = caption.long()
             caplen = caplen.long()
 
@@ -242,3 +250,207 @@ class CaptionDatasetFastTextWithReplacement(CaptionDatasetFastText):
         else:
             # For validation of testing, also return all 'captions_per_image' captions to find BLEU-4 score
             return tensor_fg, img_bg, caption, caplen, all_captions
+
+class CaptionDatasetFastTextWithReplacementCV(CaptionDatasetFastText):
+    def __init__(self, data_folder, data_name, split, transform=None, train_annotations=None, val_annotations=None):
+        super().__init__(data_folder, data_name, split, transform, train_annotations, val_annotations)
+        self.simplifier = SentenceSimplifier()
+        self.covMatrix = pickle.load(open('covMatrixAnns.pkl', 'rb'))
+        self.id2classMap = getId2ClassMap()
+        self.class2idMap = getClass2IdMap()
+        self.rev_word_map = {v: k for k, v in self.word_map.items()}
+
+    def __getitem__(self, i):
+        data = super().__getitem__(i)
+        if data is None:
+            return None        
+        if self.split is 'TRAIN':
+            tensor_fg, img_bg, caption, caplen = data
+        else:
+            # For validation of testing, also return all 'captions_per_image' captions to find BLEU-4 score
+            tensor_fg, img_bg, caption, caplen, all_captions = data
+        if tensor_fg is None or img_bg is None:
+            return None
+
+        img_id = self.idx2id[i // self.cpi]
+        
+        captionString = ' '.join([self.word_map[caption[idx].item()] for idx in range(caplen) if self.word_map[caption[idx].item()] != '<unk>'][1:-1])
+        annotations = self.train_annotations if self.idx2dataset[i // self.cpi] == 'train' else self.val_annotations
+
+        classesInImage = []
+        annIds = annotations.getAnnIds(img_id)
+        if len(annIds) == 0:
+            raise Exception('Image ID {} without annotations'.format(img_id))
+        anns = annotations.loadAnns(annIds)
+
+        for annotation in anns:
+            catinfo = annotations.loadCats(annotation['category_id'])[0]
+            classesInImage.append(catinfo['name'])
+    
+        classesInImage = set(classesInImage)
+        classCombinations = list(itertools.combinations(classesInImage, 2))
+        random.shuffle(classCombinations)
+        success, pair, synonymPair, simplifiedString = self.simplifier.simplifyCV(captionString, classCombinations)
+
+        if success is True and pair[0] in self.class2idMap.keys() and pair[1] in self.class2idMap.keys():
+            wordToReplace = pair[1]
+            clsIdx = self.class2idMap[pair[0]]
+            classProbabilities = 1 / (self.covMatrix[clsIdx, :] / np.sum(self.covMatrix[clsIdx, :]))
+            classProbabilities = classProbabilities / np.sum(classProbabilities)
+            replacementWord = wordToReplace
+            while replacementWord == wordToReplace:
+                replacementWord = self.id2classMap[np.argmax(np.random.multinomial(1, classProbabilities))]
+            clsPair = (wordToReplace, replacementWord)
+
+            self.covMatrix = updateCovMatrix(self.covMatrix, annotations, img_id, (self.class2idMap[clsPair[0]], self.class2idMap[clsPair[1]]))
+            
+            simplifiedString = re.sub(r"\b{}\b".format(synonymPair[1]), " {} ".format(replacementWord), simplifiedString)
+            simplifiedString = re.sub(r" nt", "nt", simplifiedString)
+            simplifiedString = simplifiedString.strip()
+
+            tensor_fg = torch.zeros([14, 14, 300])
+            tensor_fg = self.FTReplacer.replace(img_id, tensor_fg, clsPair)
+
+            caplen = torch.zeros(1)
+            caption = torch.zeros(52)
+            i = 0
+            caption[i] = self.rev_word_map['<start>']
+            i += 1
+            for word in simplifiedString.split():
+                if word in self.rev_word_map.keys():
+                    caption[i] = self.rev_word_map[word]
+                    i += 1
+                else:
+                    print('ERROR - word "{}" not found in word map'.format(word))
+                    print('ERROR - Sentence with error is {}'.format(simplifiedString))
+            caption[i] = self.rev_word_map['<end>']
+            caplen[0] = i+1
+            caption = caption.long()
+            caplen = caplen.long()
+            
+
+        if self.split is 'TRAIN':
+            return tensor_fg, img_bg, caption, caplen
+        else:
+            # For validation of testing, also return all 'captions_per_image' captions to find BLEU-4 score
+            return tensor_fg, img_bg, caption, caplen, all_captions  
+
+class CaptionDatasetFastTextStrangeImages(CaptionDatasetFastText):
+    def __init__(self, data_folder, data_name, split, transform=None, train_annotations=None, val_annotations=None):
+        super().__init__(data_folder, data_name, split, transform, train_annotations, val_annotations)
+        self.simplifier = SentenceSimplifier(42)
+        self.covMatrix = pickle.load(open('covMatrixAnns.pkl', 'rb'))
+        self.id2classMap = getId2ClassMap()
+        self.class2idMap = getClass2IdMap()
+        self.rev_word_map = {v: k for k, v in self.word_map.items()}
+
+    def __getitem__(self, i):
+        data = super().__getitem__(i)
+        if data is None:
+            return None        
+        if self.split is 'TRAIN':
+            tensor_fg, img_bg, caption, caplen = data
+        else:
+            # For validation of testing, also return all 'captions_per_image' captions to find BLEU-4 score
+            tensor_fg, img_bg, caption, caplen, all_captions = data
+        if tensor_fg is None or img_bg is None:
+            return None
+
+        img_id = self.idx2id[i // self.cpi]
+        
+        random.seed(i)
+        
+        captionString = ' '.join([self.word_map[caption[idx].item()] for idx in range(caplen) if self.word_map[caption[idx].item()] != '<unk>'][1:-1])
+        if self.split != 'TEST':
+            annotations = self.train_annotations if self.idx2dataset[i // self.cpi] == 'train' else self.val_annotations
+        else:
+            annotations = self.test_annotations
+
+        classesInImage = []
+        annIds = annotations.getAnnIds(img_id)
+        if len(annIds) == 0:
+            raise Exception('Image ID {} without annotations'.format(img_id))
+        anns = annotations.loadAnns(annIds)
+
+        for annotation in anns:
+            catinfo = annotations.loadCats(annotation['category_id'])[0]
+            classesInImage.append(catinfo['name'])
+    
+        classesInImage = list(set(classesInImage))
+        classesInImage.sort()
+        classCombinations = list(itertools.combinations(classesInImage, 2))
+        random.shuffle(classCombinations)
+        success, pair, synonymPair, simplifiedString = self.simplifier.simplifyStrange(captionString, classCombinations)
+
+        if success is True and pair[0] in self.class2idMap.keys() and pair[1] in self.class2idMap.keys():
+            wordToReplace = pair[1]
+            clsIdx = self.class2idMap[pair[0]]
+            sortedClasses = np.argsort(self.covMatrix[clsIdx, :])
+            uncommonClasses = sortedClasses[0:10]
+            replacementWord = wordToReplace
+            while replacementWord == wordToReplace or replacementWord == pair[0]:
+                replacementWord = self.id2classMap[random.choice(uncommonClasses)]
+            clsPair = (wordToReplace, replacementWord)
+            
+            simplifiedString = re.sub(r"\b{}\b".format(synonymPair[1]), " {} ".format(replacementWord), simplifiedString)
+            simplifiedString = re.sub(r" nt", "nt", simplifiedString)
+            simplifiedString = simplifiedString.strip()
+
+            if i % 5 == 0:
+                print('Image ID: {}'.format(img_id))
+                print('Strange Image - {}'.format(simplifiedString))
+
+            tensor_fg = torch.zeros([14, 14, 300])
+            tensor_fg = self.FTReplacer.replace(img_id, tensor_fg, clsPair)
+
+            caplen = torch.zeros(1)
+            caption = torch.zeros(52)
+            i = 0
+            caption[i] = self.rev_word_map['<start>']
+            i += 1
+            for word in simplifiedString.split():
+                if word in self.rev_word_map.keys():
+                    caption[i] = self.rev_word_map[word]
+                    i += 1
+                else:
+                    print('ERROR - word "{}" not found in word map'.format(word))
+                    print('ERROR - Sentence with error is {}'.format(simplifiedString))
+            caption[i] = self.rev_word_map['<end>']
+            caplen[0] = i+1
+            caption = caption.long()
+            caplen = caplen.long()
+            
+            if self.split is 'TRAIN':
+                return tensor_fg, img_bg, caption, caplen
+            else:
+                # For validation of testing, also return all 'captions_per_image' captions to find BLEU-4 score
+                return tensor_fg, img_bg, caption, caplen, all_captions
+        return None
+
+class FasterRCNNDataset(CaptionDataset):
+    def __init__(self, data_folder, data_name, split, transform=None, train_annotations=None, val_annotations=None):
+        super().__init__(data_folder, data_name, split, None, True)
+        if train_annotations is None:
+            self.train_annotations = COCO(os.path.join('dataset', 'annotations', 'instances_train2014.json'))
+        else:
+            self.train_annotations = train_annotations
+        if val_annotations is None:
+            self.val_annotations = COCO(os.path.join('dataset', 'annotations', 'instances_val2014.json'))
+        else:
+            self.val_annotations = val_annotations
+        self.idx2dataset = {}
+        
+        with(open(os.path.join(data_folder, self.split + '_ids.txt'), 'r')) as f:
+            for i, line in enumerate(f):
+                values = line.rstrip().split()
+                self.idx2dataset[i] = values[1]
+
+    def __getitem__(self, i):
+        img_id, _, img = super().__getitem__(i)
+        annotations = self.train_annotations if self.idx2dataset[i // self.cpi] == 'train' else self.val_annotations
+        imgInfo = annotations.loadImgs(img_id)
+        img_h = imgInfo[0]['height']
+        img_w = imgInfo[0]['width']
+        return img_id, img, img_h, img_w
+
+        

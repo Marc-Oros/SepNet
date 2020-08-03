@@ -5,26 +5,34 @@ import torch
 from image_manipulation import debug
 
 class FastTextReplacer:
-    def __init__(self, train_annotations=None, val_annotations=None):
-        if train_annotations is None:
-            self.train_annotations = COCO(os.path.join('dataset', 'annotations', 'instances_train2014.json'))
+    def __init__(self, train_annotations=None, val_annotations=None, useFRCNN=False):
+        self.useFRCNN = useFRCNN
+        if useFRCNN is False:
+            if train_annotations is None:
+                self.train_annotations = COCO(os.path.join('dataset', 'annotations', 'instances_train2014.json'))
+            else:
+                self.train_annotations = train_annotations
+            if val_annotations is None:
+                self.val_annotations = COCO(os.path.join('dataset', 'annotations', 'instances_val2014.json'))
+            else:
+                self.val_annotations = val_annotations
         else:
-            self.train_annotations = train_annotations
-        if val_annotations is None:
-            self.val_annotations = COCO(os.path.join('dataset', 'annotations', 'instances_val2014.json'))
-        else:
-            self.val_annotations = val_annotations
+            self.test_annotations = COCO('coco_FRCNN.json')
         self.classMap = pickle.load(open('classVectors.pkl', 'rb'))
 
     def replace(self, img_id, tensor, pair):
         #Image tensors as (height, width)
-        annotations = self.train_annotations
-        annIds = annotations.getAnnIds(img_id)
-        if len(annIds) == 0:
-            annotations = self.val_annotations
+        if self.useFRCNN is False:
+            annotations = self.train_annotations
             annIds = annotations.getAnnIds(img_id)
             if len(annIds) == 0:
-                raise Exception('Image ID {} without annotations'.format(img_id))
+                annotations = self.val_annotations
+                annIds = annotations.getAnnIds(img_id)
+                if len(annIds) == 0:
+                    raise Exception('Image ID {} without annotations'.format(img_id))
+        else:
+            annotations = self.test_annotations
+            annIds = annotations.getAnnIds(img_id)
         anns = annotations.loadAnns(annIds)
 
         imgInfo = annotations.loadImgs(img_id)

@@ -12,7 +12,7 @@ def separate_objects(img, caption_words, synonyms, annotations, img_id, isTest=F
     if method == "captions":
         img_fg, img_bg = separate_objects_from_captions(img, caption_words, synonyms, annotations, img_id, isTest)
     elif method == "annotations":
-        img_fg, img_bg = separate_objects_from_captions(img, caption_words, synonyms, annotations, img_id, isTest)
+        img_fg, img_bg = separate_objects_from_annotations(img, caption_words, synonyms, annotations, img_id, isTest)
     else:
         raise Exception("Invalid image separation method")
 
