@@ -4,7 +4,7 @@ import h5py
 import json
 import os
 from image_manipulation import separate_objects
-from utils import get_word_synonyms, getClsList, getProbabilityValues, getId2ClassMap, getClass2IdMap, updateCovMatrix
+from utils import get_word_synonyms, getClsList, getId2ClassMap, getClass2IdMap, updateCovMatrix, getClassCombinationsWithPerson
 from pycocotools.coco import COCO
 import spacy
 import re
@@ -14,6 +14,7 @@ from fastTextReplacer import FastTextReplacer
 import numpy as np
 import pickle
 import itertools
+import sys
 
 
 class CaptionDataset(Dataset):
@@ -184,9 +185,10 @@ class CaptionDatasetFastText(CaptionDatasetSplit):
 class CaptionDatasetFastTextWithReplacement(CaptionDatasetFastText):
     def __init__(self, data_folder, data_name, split, transform=None, train_annotations=None, val_annotations=None):
         super().__init__(data_folder, data_name, split, transform, train_annotations, val_annotations)
+        if '--person' in sys.argv:
+            print("Replacing only images with persons")
         self.simplifier = SentenceSimplifier()
-        self.pairsToReplace = [('person', cls) for cls in getClsList()[1:]]
-        self.wordProbabilities = getProbabilityValues()
+        self.covMatrix = pickle.load(open('covMatrixAnns.pkl', 'rb'))
         self.id2classMap = getId2ClassMap()
         self.class2idMap = getClass2IdMap()
         self.rev_word_map = {v: k for k, v in self.word_map.items()}
@@ -202,21 +204,45 @@ class CaptionDatasetFastTextWithReplacement(CaptionDatasetFastText):
             tensor_fg, img_bg, caption, caplen, all_captions = data
         if tensor_fg is None or img_bg is None:
             return None
-        captionString = ' '.join([self.word_map[caption[idx].item()] for idx in range(caplen) if self.word_map[caption[idx].item()] != '<unk>'][1:-1])
-        success, pair, synonymPair, simplifiedString = self.simplifier.simplify(self.pairsToReplace, captionString)
 
-        method = 'multinomial'
+        img_id = self.idx2id[i // self.cpi]
+
+        annotations = self.train_annotations if self.idx2dataset[i // self.cpi] == 'train' else self.val_annotations
+        classesInImage = []
+        annIds = annotations.getAnnIds(img_id)
+        if len(annIds) == 0:
+            raise Exception('Image ID {} without annotations'.format(img_id))
+        anns = annotations.loadAnns(annIds)
+
+        for annotation in anns:
+            catinfo = annotations.loadCats(annotation['category_id'])[0]
+            classesInImage.append(catinfo['name'])
+    
+        classesInImage = set(classesInImage)
+        if '--person' in sys.argv:
+            classCombinations = getClassCombinationsWithPerson(classesInImage)
+            shuffle = False
+        else:
+            classCombinations = list(itertools.combinations(classesInImage, 2))
+            shuffle = True
+        random.shuffle(classCombinations)
+        captionString = ' '.join([self.word_map[caption[idx].item()] for idx in range(caplen) if self.word_map[caption[idx].item()] != '<unk>'][1:-1])
+        success, pair, synonymPair, simplifiedString = self.simplifier.simplify(captionString, classCombinations, shuffle)
+
+        method = 'uniform'
 
         if success is True and random.random() < 0.5 and pair[0] in self.class2idMap.keys() and pair[1] in self.class2idMap.keys():
-            if pair[0] != "person":
-                raise Exception("???")
             wordToReplace = pair[1]
-            replacementWord = 'person'
-            while replacementWord == 'person' or replacementWord == wordToReplace:
+            replacementWord = wordToReplace
+            while replacementWord == pair[0] or replacementWord == wordToReplace:
                 if method == 'uniform':
                     replacementWord = self.id2classMap[np.random.choice(80, 1)[0]]
                 elif method == 'multinomial':
-                    replacementWord = self.id2classMap[np.argmax(np.random.multinomial(1, self.wordProbabilities))]
+                    clsIdx = self.class2idMap[pair[0]]
+                    classProbabilities = 1 / (self.covMatrix[clsIdx, :] / np.sum(self.covMatrix[clsIdx, :]))
+                    classProbabilities[clsIdx] = 0
+                    classProbabilities = classProbabilities / np.sum(classProbabilities)
+                    replacementWord = self.id2classMap[np.argmax(np.random.multinomial(1, classProbabilities))]
                 else:
                     raise Exception('Invalid random choice method')
             clsPair = (wordToReplace, replacementWord)
@@ -254,6 +280,8 @@ class CaptionDatasetFastTextWithReplacement(CaptionDatasetFastText):
 class CaptionDatasetFastTextWithReplacementCV(CaptionDatasetFastText):
     def __init__(self, data_folder, data_name, split, transform=None, train_annotations=None, val_annotations=None):
         super().__init__(data_folder, data_name, split, transform, train_annotations, val_annotations)
+        if '--person' in sys.argv:
+            print("Replacing only images with persons")
         self.simplifier = SentenceSimplifier()
         self.covMatrix = pickle.load(open('covMatrixAnns.pkl', 'rb'))
         self.id2classMap = getId2ClassMap()
@@ -288,17 +316,23 @@ class CaptionDatasetFastTextWithReplacementCV(CaptionDatasetFastText):
             classesInImage.append(catinfo['name'])
     
         classesInImage = set(classesInImage)
-        classCombinations = list(itertools.combinations(classesInImage, 2))
+        if '--person' in sys.argv:
+            classCombinations = getClassCombinationsWithPerson(classesInImage)
+            shuffle = False
+        else:
+            classCombinations = list(itertools.combinations(classesInImage, 2))
+            shuffle = True        
         random.shuffle(classCombinations)
-        success, pair, synonymPair, simplifiedString = self.simplifier.simplifyCV(captionString, classCombinations)
+        success, pair, synonymPair, simplifiedString = self.simplifier.simplify(captionString, classCombinations, shuffle)
 
         if success is True and pair[0] in self.class2idMap.keys() and pair[1] in self.class2idMap.keys():
             wordToReplace = pair[1]
             clsIdx = self.class2idMap[pair[0]]
             classProbabilities = 1 / (self.covMatrix[clsIdx, :] / np.sum(self.covMatrix[clsIdx, :]))
+            classProbabilities[clsIdx] = 0
             classProbabilities = classProbabilities / np.sum(classProbabilities)
             replacementWord = wordToReplace
-            while replacementWord == wordToReplace:
+            while replacementWord == pair[0] or replacementWord == wordToReplace:
                 replacementWord = self.id2classMap[np.argmax(np.random.multinomial(1, classProbabilities))]
             clsPair = (wordToReplace, replacementWord)
 
@@ -338,11 +372,37 @@ class CaptionDatasetFastTextWithReplacementCV(CaptionDatasetFastText):
 class CaptionDatasetFastTextStrangeImages(CaptionDatasetFastText):
     def __init__(self, data_folder, data_name, split, transform=None, train_annotations=None, val_annotations=None):
         super().__init__(data_folder, data_name, split, transform, train_annotations, val_annotations)
-        self.simplifier = SentenceSimplifier(42)
+        self.simplifier = SentenceSimplifier()
         self.covMatrix = pickle.load(open('covMatrixAnns.pkl', 'rb'))
         self.id2classMap = getId2ClassMap()
         self.class2idMap = getClass2IdMap()
         self.rev_word_map = {v: k for k, v in self.word_map.items()}
+
+        if '--mkjson' in sys.argv:
+            print("Generating JSON file for Unusual image dataset")
+            #Custom coco json for CHAIR evaluation
+            self.instGt = json.load(open('dataset/annotations/instances_train2014.json', 'r'))
+            self.captionGt = json.load(open('dataset/annotations/captions_train2014.json', 'r'))
+
+            self.trainDictInstances = {}
+            self.trainDictCaptions = {}
+            self.valDict = {}
+            self.trainDictInstances = {}
+            self.trainDictInstances['info'] = self.instGt['info']
+            self.trainDictInstances['licenses'] = self.instGt['licenses']
+            self.trainDictInstances['images'] = []
+            self.trainDictInstances['annotations'] = []
+            self.trainDictInstances['categories'] = self.instGt['categories']
+            self.trainDictCaptions['info'] = self.captionGt['info']
+            self.trainDictCaptions['licenses'] = self.captionGt['licenses']
+            self.trainDictCaptions['images'] = []
+            self.trainDictCaptions['annotations'] = []
+            self.valDict['info'] = self.instGt['info']
+            self.valDict['licenses'] = self.instGt['licenses']
+            self.valDict['images'] = []
+            self.valDict['annotations'] = []
+            self.valDict['categories'] = self.instGt['categories']
+            self.currAnnId = 0
 
     def __getitem__(self, i):
         data = super().__getitem__(i)
@@ -361,11 +421,11 @@ class CaptionDatasetFastTextStrangeImages(CaptionDatasetFastText):
         random.seed(i)
         
         captionString = ' '.join([self.word_map[caption[idx].item()] for idx in range(caplen) if self.word_map[caption[idx].item()] != '<unk>'][1:-1])
-        if self.split != 'TEST':
-            annotations = self.train_annotations if self.idx2dataset[i // self.cpi] == 'train' else self.val_annotations
-        else:
+        if self.split == 'TEST' and '-frcnn' in sys.argv:
             annotations = self.test_annotations
-
+        else:
+            annotations = self.train_annotations if self.idx2dataset[i // self.cpi] == 'train' else self.val_annotations
+        
         classesInImage = []
         annIds = annotations.getAnnIds(img_id)
         if len(annIds) == 0:
@@ -394,7 +454,44 @@ class CaptionDatasetFastTextStrangeImages(CaptionDatasetFastText):
             
             simplifiedString = re.sub(r"\b{}\b".format(synonymPair[1]), " {} ".format(replacementWord), simplifiedString)
             simplifiedString = re.sub(r" nt", "nt", simplifiedString)
+            simplifiedString = re.sub(r"  ", " ", simplifiedString)
             simplifiedString = simplifiedString.strip()
+
+            if '--mkjson' in sys.argv:
+                for annotation in anns:
+                    catName = annotations.loadCats(annotation['category_id'])[0]['name']
+                    annCpy = dict(annotation)
+                    annCpy['category_id'] = annCpy['category_id'] if catName != wordToReplace else list(annotations.cats.keys())[self.class2idMap[replacementWord]]
+                    annCpy['id'] = self.currAnnId
+                    self.trainDictInstances['annotations'].append(annCpy)
+                    self.currAnnId += 1
+                self.trainDictCaptions['annotations'].append({
+                    "image_id": img_id,
+                    "id": self.currAnnId,
+                    "caption": simplifiedString
+                })
+                self.currAnnId += 1
+                imgInfo = {
+                    "license": 4,
+                    "file_name": "",
+                    "coco_url": "",
+                    "height": 0,
+                    "width": 0,
+                    "date_captured": "",
+                    "flickr_url": "",
+                    "id": img_id
+                }
+                self.trainDictCaptions['images'].append(imgInfo)
+                self.trainDictInstances['images'].append(imgInfo)
+                if i > 24760:
+                    with (open('dataset/annotations/unusual/instances_train2014.json', 'w')) as f:
+                        json.dump(self.trainDictInstances, f)
+                    with (open('dataset/annotations/unusual/captions_train2014.json', 'w')) as f:
+                        json.dump(self.trainDictCaptions, f)
+                    with (open('dataset/annotations/unusual/instances_val2014.json', 'w')) as f:
+                        json.dump(self.valDict, f)
+                    with (open('dataset/annotations/unusual/captions_val2014.json', 'w')) as f:
+                        json.dump(self.valDict, f)
 
             if i % 5 == 0:
                 print('Image ID: {}'.format(img_id))

@@ -225,7 +225,7 @@ def evaluate(beam_size):
             captionOutFile.write('Caption: {}\n'.format(captionString))
         print('Corresponding caption - {}'.format(captionString))
 
-    coco = COCO('testGTCaptions.json')
+    coco = COCO('dataset/annotations/unusual/captions_train2014.json')
     cocoRes = coco.loadRes(captionsJson)
     cocoEval = COCOEvalCap(coco, cocoRes)
     cocoEval.params['image_id'] = cocoRes.getImgIds()
@@ -237,6 +237,7 @@ def evaluate(beam_size):
         json.dump(resultJson, fp)
     # Calculate BLEU-4 scores
     bleu4 = corpus_bleu(references, hypotheses)
+    bleu4 = 0.0
 
     return bleu4
 
