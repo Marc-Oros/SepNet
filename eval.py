@@ -45,12 +45,23 @@ def evaluate(beam_size):
     :param beam_size: beam size at which to generate captions for evaluation
     :return: BLEU-4 score
     """
+    # FastText mode
     # Test Dataset
+    
     testDataset = CaptionDatasetFastText(data_folder, data_name, 'TEST', transform=transforms.Compose([normalize]))
     # DataLoader
     loader = torch.utils.data.DataLoader(
         testDataset,
         batch_size=1, shuffle=False, num_workers=1, pin_memory=True, collate_fn=my_collate_test)
+    
+    """
+    # Image features mode
+    testDataset = CaptionDatasetSplit(data_folder, data_name, 'TEST', transform=transforms.Compose([normalize]))
+    # DataLoader
+    loader = torch.utils.data.DataLoader(
+        testDataset,
+        batch_size=1, shuffle=False, num_workers=1, pin_memory=True, collate_fn=my_collate_split)
+    """
 
     # TODO: Batched Beam Search
     # Therefore, do not use a batch_size greater than 1 - IMPORTANT!
