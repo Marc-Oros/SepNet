@@ -101,6 +101,7 @@ class CaptionDatasetSplit(CaptionDataset):
     def __init__(self, data_folder, data_name, split, transform=None, train_annotations=None, val_annotations=None):
         super().__init__(data_folder, data_name, split, None, False)
         
+        self.usableImages = 0
         self.splitTransform = transform
         self.synonyms = get_word_synonyms()
         if train_annotations is None:
@@ -144,8 +145,13 @@ class CaptionDatasetSplit(CaptionDataset):
         
         img_fg, img_bg = separate_objects(img, caption_words, self.synonyms, annotations, self.idx2id[i // self.cpi], self.split == 'TEST')
 
+        if i + 1 == len(self):
+            print("Total of images in this dataset is {}".format(self.usableImages//5))
+
         if img_bg is None or img_fg is None:
             return None
+
+        self.usableImages += 1
 
         if self.splitTransform is not None:
             img_bg = self.splitTransform(img_bg)
@@ -174,7 +180,8 @@ class CaptionDatasetFastText(CaptionDatasetSplit):
         if img_fg is None or img_bg is None:
             return None
         tensor_fg = torch.zeros([14, 14, 300])
-        tensor_fg = self.FTReplacer.replace(img_id, tensor_fg, (None, None))
+        if '--bg' not in sys.argv:
+            tensor_fg = self.FTReplacer.replace(img_id, tensor_fg, (None, None))
         if self.split is 'TRAIN':
             return tensor_fg, img_bg, caption, caplen
         else:
