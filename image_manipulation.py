@@ -31,11 +31,11 @@ def separate_objects(img, caption_words, synonyms, annotations, img_id, isTest=F
         img_fg_arr = img_fg.permute(1, 2, 0).numpy()
         img_bg_arr = img_bg.permute(1, 2, 0).numpy()
         img = Image.fromarray((img_arr * 255).astype(np.uint8))
-        img_fg = Image.fromarray((img_fg_arr * 255).astype(np.uint8))
-        img_bg = Image.fromarray((img_bg_arr * 255).astype(np.uint8))
+        img_fg_sav = Image.fromarray((img_fg_arr * 255).astype(np.uint8))
+        img_bg_sav = Image.fromarray((img_bg_arr * 255).astype(np.uint8))
         img.save('imgs/img_{}.jpg'.format(img_id))
-        img_fg.save('imgs/img_fg_{}.jpg'.format(img_id))
-        img_bg.save('imgs/img_bg_{}.jpg'.format(img_id))
+        img_fg_sav.save('imgs/img_fg_{}.jpg'.format(img_id))
+        img_bg_sav.save('imgs/img_bg_{}.jpg'.format(img_id))
     if '--fg' in sys.argv:
         img_bg[:,:,:] = 0
     if '--bg' in sys.argv:
